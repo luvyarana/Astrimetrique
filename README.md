@@ -1,4 +1,4 @@
-# Astrimetrique 🌌
+# Astrimetrique 
 
 **Astrimetrique** is a professional, macOS-native scientific tool for high-precision astrometric data reduction. Designed as a modern spiritual successor to *Astrometrica*, it translates CCD pixel coordinates into sub-arcsecond Right Ascension (RA) and Declination (Dec) measurements and outputs Minor Planet Center (MPC) 80-column reports.
 
