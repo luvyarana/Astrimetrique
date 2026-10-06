@@ -308,11 +308,14 @@ class ControlPanel(QWidget):
         # Candidates Table
         diff_layout.addWidget(QLabel("Detected Moving Candidates (Double-click to inspect):"))
         self.candidate_table = QTableWidget()
-        self.candidate_table.setColumnCount(4)
-        self.candidate_table.setHorizontalHeaderLabels(["ID", "X, Y", "S/N", "Epoch"])
+        self.candidate_table.setColumnCount(6)
+        self.candidate_table.setHorizontalHeaderLabels(["ID", "X, Y", "S/N", "Scale", "Confidence", "Epoch"])
         self.candidate_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.candidate_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.candidate_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.candidate_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.candidate_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.candidate_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.candidate_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.candidate_table.verticalHeader().setVisible(False)
         self.candidate_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.candidate_table.itemDoubleClicked.connect(self._on_candidate_double_clicked)
@@ -678,6 +681,8 @@ class ControlPanel(QWidget):
         for row, cand in enumerate(result.candidates):
             item_id = QTableWidgetItem(cand.candidate_id)
             item_id.setFont(mono_font)
+            if cand.is_priority:
+                item_id.setForeground(QColor("#00E676"))
             item_id.setFlags(item_id.flags() ^ Qt.ItemFlag.ItemIsEditable)
 
             item_xy = QTableWidgetItem(f"{cand.x:.1f}, {cand.y:.1f}")
@@ -686,8 +691,23 @@ class ControlPanel(QWidget):
 
             item_snr = QTableWidgetItem(f"{cand.snr:.1f} σ")
             item_snr.setFont(mono_font)
-            item_snr.setForeground(QColor("#00E676" if cand.snr >= 5.0 else "#FFB703"))
+            item_snr.setForeground(QColor("#00E676" if cand.snr >= 8.0 else "#FFB703"))
             item_snr.setFlags(item_snr.flags() ^ Qt.ItemFlag.ItemIsEditable)
+
+            item_scale = QTableWidgetItem(cand.scale)
+            item_scale.setFont(mono_font)
+            if "High" in cand.scale:
+                item_scale.setForeground(QColor("#00E5FF"))
+            elif "Mid" in cand.scale:
+                item_scale.setForeground(QColor("#FFB703"))
+            else:
+                item_scale.setForeground(QColor("#9E9E9E"))
+            item_scale.setFlags(item_scale.flags() ^ Qt.ItemFlag.ItemIsEditable)
+
+            item_conf = QTableWidgetItem(f"{cand.confidence_score * 100:.0f}%")
+            item_conf.setFont(mono_font)
+            item_conf.setForeground(QColor("#00E676" if cand.confidence_score >= 0.90 else "#FFB703"))
+            item_conf.setFlags(item_conf.flags() ^ Qt.ItemFlag.ItemIsEditable)
 
             item_pol = QTableWidgetItem(cand.polarity)
             item_pol.setFont(mono_font)
@@ -696,7 +716,9 @@ class ControlPanel(QWidget):
             self.candidate_table.setItem(row, 0, item_id)
             self.candidate_table.setItem(row, 1, item_xy)
             self.candidate_table.setItem(row, 2, item_snr)
-            self.candidate_table.setItem(row, 3, item_pol)
+            self.candidate_table.setItem(row, 3, item_scale)
+            self.candidate_table.setItem(row, 4, item_conf)
+            self.candidate_table.setItem(row, 5, item_pol)
 
         QMessageBox.information(
             self,
