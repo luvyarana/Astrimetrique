@@ -47,33 +47,33 @@ class MPCExportDialog(QDialog):
             "Minor Planet Center (MPC) 80-Column Standard Format\n"
             "Strict fixed-width record with fractional-day UTC, J2000 celestial coordinates, and observatory code."
         )
-        banner.setStyleSheet("color: #00F2FE; font-weight: bold; padding: 4px;")
+        banner.setStyleSheet("color: #000080; font-weight: bold; padding: 4px;")
         layout.addWidget(banner)
 
         # 80-Column Visual Ruler
         ruler_lbl = QLabel("1...5....10...15...20...25...30...35...40...45...50...55...60...65...70...75...80")
-        ruler_lbl.setFont(QFont("SF Mono", 11))
-        ruler_lbl.setStyleSheet("color: #64748B; background-color: #121620; padding: 3px 6px; border: 1px solid #1E2738;")
+        ruler_lbl.setFont(QFont("Courier New", 10))
+        ruler_lbl.setStyleSheet("color: #000000; background-color: #D4D0C8; padding: 2px 4px; border: 1px solid #808080;")
         layout.addWidget(ruler_lbl)
 
         # Text Area
         self.text_area = QPlainTextEdit()
-        self.text_area.setFont(QFont("SF Mono", 12))
+        self.text_area.setFont(QFont("Courier New", 11))
         self.text_area.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.text_area.setStyleSheet(
-            "background-color: #0E121A; color: #00F2FE; border: 1px solid #1E2738; padding: 8px;"
+            "background-color: #FFFFFF; color: #000000; border: 1px solid #808080; padding: 4px;"
         )
         layout.addWidget(self.text_area)
 
         # Action Buttons
         btn_layout = QHBoxLayout()
         
-        self.btn_copy = QPushButton("📋 Copy to Clipboard")
+        self.btn_copy = QPushButton("Copy to Clipboard")
         self.btn_copy.setObjectName("primaryButton")
         self.btn_copy.clicked.connect(self._copy_to_clipboard)
         btn_layout.addWidget(self.btn_copy)
 
-        self.btn_save = QPushButton("💾 Save to File...")
+        self.btn_save = QPushButton("Save to File...")
         self.btn_save.clicked.connect(self._save_to_file)
         btn_layout.addWidget(self.btn_save)
 

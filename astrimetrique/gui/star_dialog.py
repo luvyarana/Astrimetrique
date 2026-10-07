@@ -87,11 +87,11 @@ class StarReferenceDialog(QDialog):
         meas_group = QGroupBox("Sub-Pixel Centroid Fit")
         meas_layout = QFormLayout(meas_group)
 
-        mono_font = QFont("SF Mono", 11)
+        mono_font = QFont("Courier New", 10)
 
         lbl_xy = QLabel(f"X: {self.centroid.x:.3f} px  |  Y: {self.centroid.y:.3f} px")
         lbl_xy.setFont(mono_font)
-        lbl_xy.setStyleSheet("color: #00F2FE; font-weight: bold;")
+        lbl_xy.setStyleSheet("color: #000080; font-weight: bold;")
         meas_layout.addRow("Centroid (x, y):", lbl_xy)
 
         lbl_fwhm = QLabel(f"{self.centroid.fwhm:.2f} px  (Method: {self.centroid.fit_method})")
@@ -147,11 +147,11 @@ class StarReferenceDialog(QDialog):
 
         gaia_desc = QLabel("Automatically fetch precise catalog coordinates from ESA Gaia DR3 via astroquery:")
         gaia_desc.setWordWrap(True)
-        gaia_desc.setStyleSheet("color: #94A3B8; font-size: 11px;")
+        gaia_desc.setStyleSheet("color: #404040; font-size: 11px;")
         gaia_layout.addWidget(gaia_desc)
 
         btn_gaia_layout = QHBoxLayout()
-        self.btn_gaia_fetch = QPushButton("✨ Fetch from Gaia DR3")
+        self.btn_gaia_fetch = QPushButton("Fetch from Gaia DR3")
         self.btn_gaia_fetch.setObjectName("primaryButton")
         self.btn_gaia_fetch.clicked.connect(self._fetch_from_gaia)
         btn_gaia_layout.addWidget(self.btn_gaia_fetch)
@@ -163,7 +163,7 @@ class StarReferenceDialog(QDialog):
         gaia_layout.addWidget(self.gaia_progress)
 
         self.lbl_gaia_status = QLabel("")
-        self.lbl_gaia_status.setStyleSheet("color: #00F2FE; font-size: 11px;")
+        self.lbl_gaia_status.setStyleSheet("color: #000080; font-size: 11px; font-weight: bold;")
         gaia_layout.addWidget(self.lbl_gaia_status)
 
         layout.addWidget(gaia_group)

@@ -54,3 +54,4 @@ htmlcov/
 *.swp
 *.swo
 *~
+.freebuff/

@@ -1,7 +1,7 @@
 """
-Astrimetrique Control Panel with Moving Minor Body Discovery & Blinking.
-Hosts reference star management, target object extraction, plate solution metrics,
-MPC parameters, and the Discovery & Image Registration / Blinking engine.
+Astrometrica-Style High-Density Scientific Control Center.
+Presents stacked industrial panels: Reference Star Table, Target Object Panel,
+Solution Quality Box, MPC Settings, and Discovery/Blinking Engine.
 """
 
 from datetime import datetime, timezone
@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QPushButton,
@@ -26,8 +25,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QSlider,
-    QButtonGroup,
-    QRadioButton,
+    QScrollArea,
+    QFrame,
 )
 
 from astrimetrique.core.centroid import CentroidResult
@@ -131,8 +130,7 @@ class FieldGaiaWorker(QThread):
 
 class ControlPanel(QWidget):
     """
-    Control dock panel managing reference stars, plate solving, multi-frame registration,
-    blinking, diffing, and MPC reporting.
+    High-density Astrometrica scientific control center with stacked panels.
     """
 
     solveRequested = pyqtSignal()
@@ -170,344 +168,256 @@ class ControlPanel(QWidget):
         self._init_ui()
 
     def _init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(6, 6, 6, 6)
-        main_layout.setSpacing(8)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(2, 2, 2, 2)
+        root_layout.setSpacing(0)
 
-        self.tabs = QTabWidget()
+        # Scroll area containing the stacked industrial panels
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        # Tab 1: Discovery & Blinking
-        self.tab_discovery = QWidget()
-        self._init_discovery_tab()
-        self.tabs.addTab(self.tab_discovery, "🛸 Discovery")
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
 
-        # Tab 2: Reference Stars
-        self.tab_stars = QWidget()
-        self._init_stars_tab()
-        self.tabs.addTab(self.tab_stars, "⭐ Ref Stars")
+        mono_font = QFont("Courier New", 10)
 
-        # Tab 3: Target Object
-        self.tab_target = QWidget()
-        self._init_target_tab()
-        self.tabs.addTab(self.tab_target, "🎯 Target Object")
+        # =========================================================================
+        # Panel 1: Reference Star Table (Dense Grid: ID | X | Y | RA | Dec | Res)
+        # =========================================================================
+        group_stars = QGroupBox("Reference Star Table (LSPC)")
+        stars_layout = QVBoxLayout(group_stars)
+        stars_layout.setContentsMargins(4, 6, 4, 4)
+        stars_layout.setSpacing(4)
 
-        # Tab 4: Solution & Diagnostics
-        self.tab_solution = QWidget()
-        self._init_solution_tab()
-        self.tabs.addTab(self.tab_solution, "📐 Solution")
+        self.star_table = QTableWidget()
+        self.star_table.setColumnCount(6)
+        self.star_table.setHorizontalHeaderLabels([
+            "ID", "X (px)", "Y (px)", "RA (J2000)", "Dec (J2000)", "Res (\")"
+        ])
+        self.star_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.star_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.star_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.star_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.star_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.star_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self.star_table.verticalHeader().setVisible(False)
+        self.star_table.verticalHeader().setDefaultSectionSize(18)
+        self.star_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.star_table.itemDoubleClicked.connect(self._on_star_row_double_clicked)
+        self.star_table.setMinimumHeight(150)
+        stars_layout.addWidget(self.star_table)
 
-        # Tab 5: MPC Parameters
-        self.tab_mpc = QWidget()
-        self._init_mpc_tab()
-        self.tabs.addTab(self.tab_mpc, "📡 MPC Settings")
+        self.gaia_progress = QProgressBar()
+        self.gaia_progress.setRange(0, 0)
+        self.gaia_progress.hide()
+        stars_layout.addWidget(self.gaia_progress)
 
-        main_layout.addWidget(self.tabs)
+        star_btns_layout = QHBoxLayout()
+        star_btns_layout.setSpacing(4)
 
-    def _init_discovery_tab(self):
-        layout = QVBoxLayout(self.tab_discovery)
-        layout.setSpacing(8)
+        self.btn_solve = QPushButton("Solve Plate")
+        self.btn_solve.setObjectName("solveButton")
+        self.btn_solve.clicked.connect(self.solve_plate)
+        star_btns_layout.addWidget(self.btn_solve)
 
-        # 1. Multi-Frame Alignment Box
-        group_align = QGroupBox("Multi-Epoch Registration")
-        align_layout = QFormLayout(group_align)
+        self.btn_auto_gaia = QPushButton("Gaia DR3 Field")
+        self.btn_auto_gaia.clicked.connect(self._fetch_gaia_field)
+        star_btns_layout.addWidget(self.btn_auto_gaia)
 
-        mono_font = QFont("SF Mono", 10)
-        self.lbl_frame_a_info = QLabel("Ref: None")
-        self.lbl_frame_a_info.setFont(mono_font)
-        align_layout.addRow("Frame A:", self.lbl_frame_a_info)
+        self.btn_clear_stars = QPushButton("Clear")
+        self.btn_clear_stars.clicked.connect(self._clear_all_stars)
+        star_btns_layout.addWidget(self.btn_clear_stars)
+        stars_layout.addLayout(star_btns_layout)
 
-        self.lbl_frame_b_info = QLabel("Target: None")
-        self.lbl_frame_b_info.setFont(mono_font)
-        align_layout.addRow("Frame B:", self.lbl_frame_b_info)
+        layout.addWidget(group_stars)
 
-        self.lbl_align_status = QLabel("Not aligned")
+        # =========================================================================
+        # Panel 2: Target Object Panel (Designation & Solved Coordinates)
+        # =========================================================================
+        group_target = QGroupBox("Target Object Panel")
+        target_layout = QFormLayout(group_target)
+        target_layout.setContentsMargins(4, 6, 4, 4)
+        target_layout.setSpacing(3)
+
+        target_row1 = QHBoxLayout()
+        target_row1.setSpacing(4)
+        self.txt_target_desig = QLineEdit(self.target_desig)
+        self.txt_target_desig.setPlaceholderText("e.g. 2024 AB")
+        self.txt_target_desig.textChanged.connect(self._on_target_desig_changed)
+        target_row1.addWidget(self.txt_target_desig)
+
+        self.chk_discovery = QCheckBox("Disc (*)")
+        target_row1.addWidget(self.chk_discovery)
+        target_layout.addRow("Designation:", target_row1)
+
+        self.lbl_target_xy = QLabel("-")
+        self.lbl_target_xy.setFont(mono_font)
+        target_layout.addRow("Centroid (x,y):", self.lbl_target_xy)
+
+        self.lbl_target_ra = QLabel("-")
+        self.lbl_target_ra.setFont(mono_font)
+        self.lbl_target_ra.setStyleSheet("color: #000080; font-weight: bold;")
+        target_layout.addRow("Solved RA:", self.lbl_target_ra)
+
+        self.lbl_target_dec = QLabel("-")
+        self.lbl_target_dec.setFont(mono_font)
+        self.lbl_target_dec.setStyleSheet("color: #000080; font-weight: bold;")
+        target_layout.addRow("Solved Dec:", self.lbl_target_dec)
+
+        target_row2 = QHBoxLayout()
+        target_row2.setSpacing(4)
+        self.txt_target_mag = QLineEdit("15.5")
+        self.txt_target_mag.setPlaceholderText("Mag")
+        target_row2.addWidget(self.txt_target_mag)
+
+        self.lbl_target_fwhm = QLabel("SNR: -")
+        self.lbl_target_fwhm.setFont(mono_font)
+        target_row2.addWidget(self.lbl_target_fwhm)
+        target_layout.addRow("Mag / SNR:", target_row2)
+
+        layout.addWidget(group_target)
+
+        # =========================================================================
+        # Panel 3: Solution Quality Box (Scale, Rotation, Total RMS)
+        # =========================================================================
+        group_solution = QGroupBox("Solution Quality Box")
+        sol_layout = QFormLayout(group_solution)
+        sol_layout.setContentsMargins(4, 6, 4, 4)
+        sol_layout.setSpacing(3)
+
+        self.lbl_sol_scale = QLabel("-")
+        self.lbl_sol_scale.setFont(mono_font)
+        sol_layout.addRow("Pixel Scale:", self.lbl_sol_scale)
+
+        self.lbl_sol_rotation = QLabel("-")
+        self.lbl_sol_rotation.setFont(mono_font)
+        sol_layout.addRow("Field Rotation:", self.lbl_sol_rotation)
+
+        self.lbl_sol_rms_tot = QLabel("-")
+        self.lbl_sol_rms_tot.setFont(mono_font)
+        self.lbl_sol_rms_tot.setStyleSheet("color: #006000; font-weight: bold;")
+        sol_layout.addRow("Total RMS Error:", self.lbl_sol_rms_tot)
+
+        self.lbl_sol_stars = QLabel("0 stars used")
+        self.lbl_sol_stars.setFont(mono_font)
+        sol_layout.addRow("Residuals:", self.lbl_sol_stars)
+
+        layout.addWidget(group_solution)
+
+        # =========================================================================
+        # Panel 4: MPC Settings (Obs Code, Date, Filter)
+        # =========================================================================
+        group_mpc = QGroupBox("MPC Settings & Export")
+        mpc_layout = QFormLayout(group_mpc)
+        mpc_layout.setContentsMargins(4, 6, 4, 4)
+        mpc_layout.setSpacing(3)
+
+        mpc_fields_row = QHBoxLayout()
+        mpc_fields_row.setSpacing(4)
+        self.txt_obs_code = QLineEdit("500")
+        self.txt_obs_code.setMaximumWidth(45)
+        self.txt_obs_code.setMaxLength(3)
+        mpc_fields_row.addWidget(self.txt_obs_code)
+
+        self.txt_filter_band = QLineEdit("R")
+        self.txt_filter_band.setMaximumWidth(30)
+        self.txt_filter_band.setMaxLength(1)
+        mpc_fields_row.addWidget(self.txt_filter_band)
+
+        self.txt_observer = QLineEdit("Observer")
+        mpc_fields_row.addWidget(self.txt_observer)
+        mpc_layout.addRow("Code/Filt/Obs:", mpc_fields_row)
+
+        self.txt_obs_date = QLineEdit("")
+        self.txt_obs_date.setPlaceholderText("YYYY-MM-DDTHH:MM:SS.sss (UTC)")
+        mpc_layout.addRow("Date (UTC):", self.txt_obs_date)
+
+        self.btn_export_mpc = QPushButton("Export MPC 80-Col")
+        self.btn_export_mpc.setObjectName("primaryButton")
+        self.btn_export_mpc.clicked.connect(self._open_mpc_export_dialog)
+        mpc_layout.addRow("", self.btn_export_mpc)
+
+        layout.addWidget(group_mpc)
+
+        # =========================================================================
+        # Panel 5: Multi-Epoch Registration & Discovery Engine
+        # =========================================================================
+        group_discovery = QGroupBox("Registration, Blinking & Diffing")
+        disc_layout = QVBoxLayout(group_discovery)
+        disc_layout.setContentsMargins(4, 6, 4, 4)
+        disc_layout.setSpacing(4)
+
+        self.lbl_align_status = QLabel("Target: Not aligned")
         self.lbl_align_status.setFont(mono_font)
-        self.lbl_align_status.setStyleSheet("color: #94A3B8;")
-        align_layout.addRow("Status:", self.lbl_align_status)
+        self.lbl_align_status.setStyleSheet("color: #000080; font-weight: bold;")
+        disc_layout.addWidget(self.lbl_align_status)
 
-        self.btn_align = QPushButton("🔄 Align Frame B to Frame A")
+        reg_btn_row = QHBoxLayout()
+        reg_btn_row.setSpacing(4)
+        self.btn_align = QPushButton("Align B -> A")
         self.btn_align.clicked.connect(self._run_alignment)
-        align_layout.addRow("", self.btn_align)
+        reg_btn_row.addWidget(self.btn_align)
+
+        self.btn_toggle_blink = QPushButton("▶ Blink")
+        self.btn_toggle_blink.setCheckable(True)
+        self.btn_toggle_blink.clicked.connect(self._on_blink_toggled)
+        reg_btn_row.addWidget(self.btn_toggle_blink)
+        disc_layout.addLayout(reg_btn_row)
 
         self.align_progress = QProgressBar()
         self.align_progress.setRange(0, 0)
         self.align_progress.hide()
-        align_layout.addRow("", self.align_progress)
+        disc_layout.addWidget(self.align_progress)
 
-        layout.addWidget(group_align)
-
-        # 2. View Mode & Blinking Controls
-        group_blink = QGroupBox("Blinking & Viewport Controls")
-        blink_layout = QVBoxLayout(group_blink)
-
-        btn_view_layout = QHBoxLayout()
-        self.btn_view_a = QPushButton("Frame A")
-        self.btn_view_a.clicked.connect(lambda: self.viewModeRequested.emit(ViewMode.FRAME_A))
-        btn_view_layout.addWidget(self.btn_view_a)
-
-        self.btn_view_b = QPushButton("Frame B (Aligned)")
-        self.btn_view_b.clicked.connect(lambda: self.viewModeRequested.emit(ViewMode.FRAME_B))
-        btn_view_layout.addWidget(self.btn_view_b)
-
-        self.btn_view_diff = QPushButton("Diff Map")
-        self.btn_view_diff.clicked.connect(lambda: self.viewModeRequested.emit(ViewMode.DIFF))
-        btn_view_layout.addWidget(self.btn_view_diff)
-        blink_layout.addLayout(btn_view_layout)
-
-        # Blink Mode Toggle Button
-        self.btn_toggle_blink = QPushButton("▶ Start Blinking (A ⟷ B)")
-        self.btn_toggle_blink.setCheckable(True)
-        self.btn_toggle_blink.setObjectName("primaryButton")
-        self.btn_toggle_blink.toggled.connect(self._on_blink_toggled)
-        blink_layout.addWidget(self.btn_toggle_blink)
-
-        # Blink Speed Slider
-        speed_header_layout = QHBoxLayout()
-        speed_header_layout.addWidget(QLabel("Blink Speed / Interval:"))
-        self.lbl_speed_val = QLabel("500 ms (2.0 fps)")
-        self.lbl_speed_val.setStyleSheet("color: #00F2FE; font-weight: bold;")
-        speed_header_layout.addWidget(self.lbl_speed_val)
-        blink_layout.addLayout(speed_header_layout)
-
-        self.slider_blink_speed = QSlider(Qt.Orientation.Horizontal)
-        self.slider_blink_speed.setRange(100, 2000)
-        self.slider_blink_speed.setValue(500)
-        self.slider_blink_speed.setSingleStep(50)
-        self.slider_blink_speed.valueChanged.connect(self._on_blink_speed_slider)
-        blink_layout.addWidget(self.slider_blink_speed)
-
-        layout.addWidget(group_blink)
-
-        # 3. Diffing & Moving Candidate Detection
-        group_diff = QGroupBox("Diffing & Candidate Detection")
-        diff_layout = QVBoxLayout(group_diff)
-
-        thresh_header = QHBoxLayout()
-        thresh_header.addWidget(QLabel("Detection Threshold:"))
-        self.lbl_thresh_val = QLabel("3.5 σ")
-        self.lbl_thresh_val.setStyleSheet("color: #FFB703; font-weight: bold;")
-        thresh_header.addWidget(self.lbl_thresh_val)
-        diff_layout.addLayout(thresh_header)
-
-        self.slider_diff_thresh = QSlider(Qt.Orientation.Horizontal)
-        self.slider_diff_thresh.setRange(20, 80)
-        self.slider_diff_thresh.setValue(35)
-        self.slider_diff_thresh.valueChanged.connect(self._on_diff_thresh_slider)
-        diff_layout.addWidget(self.slider_diff_thresh)
-
-        self.btn_generate_diff = QPushButton("🔍 Generate Difference & Detect Moving Bodies")
-        self.btn_generate_diff.setObjectName("solveButton")
+        diff_btn_row = QHBoxLayout()
+        diff_btn_row.setSpacing(4)
+        self.btn_generate_diff = QPushButton("Detect Moving")
         self.btn_generate_diff.clicked.connect(self._run_diffing)
-        diff_layout.addWidget(self.btn_generate_diff)
+        diff_btn_row.addWidget(self.btn_generate_diff)
+
+        self.lbl_speed_val = QLabel("500ms")
+        self.lbl_speed_val.setFont(mono_font)
+        diff_btn_row.addWidget(self.lbl_speed_val)
+        disc_layout.addLayout(diff_btn_row)
 
         self.diff_progress = QProgressBar()
         self.diff_progress.setRange(0, 0)
         self.diff_progress.hide()
-        diff_layout.addWidget(self.diff_progress)
+        disc_layout.addWidget(self.diff_progress)
 
-        # Candidates Table
-        diff_layout.addWidget(QLabel("Detected Moving Candidates (Double-click to inspect):"))
         self.candidate_table = QTableWidget()
-        self.candidate_table.setColumnCount(6)
-        self.candidate_table.setHorizontalHeaderLabels(["ID", "X, Y", "S/N", "Scale", "Confidence", "Epoch"])
+        self.candidate_table.setColumnCount(5)
+        self.candidate_table.setHorizontalHeaderLabels(["ID", "X, Y", "S/N", "Scale", "Conf"])
         self.candidate_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.candidate_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.candidate_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.candidate_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.candidate_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self.candidate_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.candidate_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.candidate_table.verticalHeader().setVisible(False)
+        self.candidate_table.verticalHeader().setDefaultSectionSize(18)
         self.candidate_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.candidate_table.itemDoubleClicked.connect(self._on_candidate_double_clicked)
-        diff_layout.addWidget(self.candidate_table)
+        self.candidate_table.setMinimumHeight(100)
+        disc_layout.addWidget(self.candidate_table)
 
-        layout.addWidget(group_diff)
-
-    def _init_stars_tab(self):
-        layout = QVBoxLayout(self.tab_stars)
-        layout.setSpacing(6)
-
-        # Star Table
-        self.star_table = QTableWidget()
-        self.star_table.setColumnCount(7)
-        self.star_table.setHorizontalHeaderLabels([
-            "Use", "ID", "X (px)", "Y (px)", "Cat RA", "Cat Dec", "Res (\")"
-        ])
-        self.star_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.star_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.star_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        self.star_table.verticalHeader().setVisible(False)
-        self.star_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.star_table.itemDoubleClicked.connect(self._on_star_row_double_clicked)
-        layout.addWidget(self.star_table)
-
-        # Gaia Progress Bar
-        self.gaia_progress = QProgressBar()
-        self.gaia_progress.setRange(0, 0)
-        self.gaia_progress.hide()
-        layout.addWidget(self.gaia_progress)
-
-        # Action Buttons
-        btn_layout_top = QHBoxLayout()
-        self.btn_auto_gaia = QPushButton("✨ Fetch Gaia DR3 Field")
-        self.btn_auto_gaia.clicked.connect(self._fetch_gaia_field)
-        btn_layout_top.addWidget(self.btn_auto_gaia)
-
-        self.btn_clear_stars = QPushButton("🗑 Clear All")
-        self.btn_clear_stars.clicked.connect(self._clear_all_stars)
-        btn_layout_top.addWidget(self.btn_clear_stars)
-        layout.addLayout(btn_layout_top)
-
-        # Solve Button
-        self.btn_solve = QPushButton("🚀 Solve Astrometric Plate (LSPC)")
-        self.btn_solve.setObjectName("solveButton")
-        self.btn_solve.clicked.connect(self.solve_plate)
-        layout.addWidget(self.btn_solve)
-
-    def _init_target_tab(self):
-        layout = QVBoxLayout(self.tab_target)
-        layout.setSpacing(10)
-
-        group_desig = QGroupBox("Target Identification")
-        desig_layout = QFormLayout(group_desig)
-
-        self.txt_target_desig = QLineEdit(self.target_desig)
-        self.txt_target_desig.setPlaceholderText("e.g. 99942 or 2024 AB")
-        self.txt_target_desig.textChanged.connect(self._on_target_desig_changed)
-        desig_layout.addRow("Object Designation:", self.txt_target_desig)
-
-        self.chk_discovery = QCheckBox("Discovery Asterisk (*)")
-        desig_layout.addRow("", self.chk_discovery)
-
-        layout.addWidget(group_desig)
-
-        # Centroid & Solved Coordinates
-        group_coords = QGroupBox("Measured Astrometry")
-        coords_layout = QFormLayout(group_coords)
-
-        mono_font = QFont("SF Mono", 11)
-
-        self.lbl_target_xy = QLabel("Not selected (click image in Target mode)")
-        self.lbl_target_xy.setFont(mono_font)
-        self.lbl_target_xy.setStyleSheet("color: #94A3B8;")
-        coords_layout.addRow("Centroid (x, y):", self.lbl_target_xy)
-
-        self.lbl_target_fwhm = QLabel("-")
-        self.lbl_target_fwhm.setFont(mono_font)
-        coords_layout.addRow("FWHM / SNR:", self.lbl_target_fwhm)
-
-        self.lbl_target_ra = QLabel("-")
-        self.lbl_target_ra.setFont(mono_font)
-        self.lbl_target_ra.setStyleSheet("color: #00F2FE; font-weight: bold;")
-        coords_layout.addRow("Solved RA (J2000):", self.lbl_target_ra)
-
-        self.lbl_target_dec = QLabel("-")
-        self.lbl_target_dec.setFont(mono_font)
-        self.lbl_target_dec.setStyleSheet("color: #00F2FE; font-weight: bold;")
-        coords_layout.addRow("Solved Dec (J2000):", self.lbl_target_dec)
-
-        self.txt_target_mag = QLineEdit("15.5")
-        self.txt_target_mag.setPlaceholderText("e.g. 15.5")
-        coords_layout.addRow("Magnitude (Mag):", self.txt_target_mag)
-
-        layout.addWidget(group_coords)
-
-        # MPC Export Button
-        self.btn_export_mpc = QPushButton("📄 Generate MPC 80-Column Report")
-        self.btn_export_mpc.setObjectName("primaryButton")
-        self.btn_export_mpc.clicked.connect(self._open_mpc_export_dialog)
-        layout.addWidget(self.btn_export_mpc)
+        layout.addWidget(group_discovery)
 
         layout.addStretch()
 
-    def _init_solution_tab(self):
-        layout = QVBoxLayout(self.tab_solution)
-        layout.setSpacing(10)
-
-        group_summary = QGroupBox("Plate Constants & Geometry")
-        summary_layout = QFormLayout(group_summary)
-
-        mono_font = QFont("SF Mono", 11)
-
-        self.lbl_sol_scale = QLabel("-")
-        self.lbl_sol_scale.setFont(mono_font)
-        summary_layout.addRow("Pixel Scale:", self.lbl_sol_scale)
-
-        self.lbl_sol_rotation = QLabel("-")
-        self.lbl_sol_rotation.setFont(mono_font)
-        summary_layout.addRow("Field Rotation:", self.lbl_sol_rotation)
-
-        self.lbl_sol_center = QLabel("-")
-        self.lbl_sol_center.setFont(mono_font)
-        summary_layout.addRow("Tangent Center:", self.lbl_sol_center)
-
-        layout.addWidget(group_summary)
-
-        group_quality = QGroupBox("Solution Quality & Residuals")
-        quality_layout = QFormLayout(group_quality)
-
-        self.lbl_sol_stars = QLabel("0 stars")
-        self.lbl_sol_stars.setFont(mono_font)
-        quality_layout.addRow("Stars Used:", self.lbl_sol_stars)
-
-        self.lbl_sol_rms_tot = QLabel("-")
-        self.lbl_sol_rms_tot.setFont(mono_font)
-        self.lbl_sol_rms_tot.setStyleSheet("color: #00E676; font-weight: bold;")
-        quality_layout.addRow("Total RMS Error:", self.lbl_sol_rms_tot)
-
-        self.lbl_sol_rms_ra = QLabel("-")
-        self.lbl_sol_rms_ra.setFont(mono_font)
-        quality_layout.addRow("RA RMS:", self.lbl_sol_rms_ra)
-
-        self.lbl_sol_rms_dec = QLabel("-")
-        self.lbl_sol_rms_dec.setFont(mono_font)
-        quality_layout.addRow("Dec RMS:", self.lbl_sol_rms_dec)
-
-        self.lbl_sol_max_res = QLabel("-")
-        self.lbl_sol_max_res.setFont(mono_font)
-        quality_layout.addRow("Max Residual:", self.lbl_sol_max_res)
-
-        layout.addWidget(group_quality)
-        layout.addStretch()
-
-    def _init_mpc_tab(self):
-        layout = QVBoxLayout(self.tab_mpc)
-        layout.setSpacing(10)
-
-        group_mpc = QGroupBox("Observatory & Observer Details")
-        mpc_layout = QFormLayout(group_mpc)
-
-        self.txt_obs_code = QLineEdit("500")
-        self.txt_obs_code.setMaxLength(3)
-        mpc_layout.addRow("Observatory Code (3-char):", self.txt_obs_code)
-
-        self.txt_obs_date = QLineEdit("")
-        self.txt_obs_date.setPlaceholderText("YYYY-MM-DDTHH:MM:SS.sss (UTC)")
-        mpc_layout.addRow("Observation Date/Time:", self.txt_obs_date)
-
-        self.txt_filter_band = QLineEdit("R")
-        self.txt_filter_band.setMaxLength(1)
-        mpc_layout.addRow("Filter Band (R/V/G/C):", self.txt_filter_band)
-
-        self.txt_observer = QLineEdit("Astrimetrique Observer")
-        mpc_layout.addRow("Observer Name:", self.txt_observer)
-
-        self.txt_telescope = QLineEdit("0.4m f/8 Reflector + CCD")
-        mpc_layout.addRow("Telescope Info:", self.txt_telescope)
-
-        layout.addWidget(group_mpc)
-        layout.addStretch()
+        scroll_area.setWidget(container)
+        root_layout.addWidget(scroll_area)
 
     def set_fits_image(self, fits_img: FITSImage):
         """Set loaded Reference FITS image (Frame A)."""
         self.fits_image_a = fits_img
-        self.lbl_frame_a_info.setText(f"{fits_img.metadata.filename} ({fits_img.width}x{fits_img.height})")
         if fits_img.metadata.date_obs:
             self.txt_obs_date.setText(fits_img.metadata.date_obs.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3])
         if fits_img.metadata.filter_name:
             self.txt_filter_band.setText(fits_img.metadata.filter_name[0].upper())
-        if fits_img.metadata.telescope:
-            self.txt_telescope.setText(fits_img.metadata.telescope)
         if fits_img.metadata.object_name:
             self.txt_target_desig.setText(fits_img.metadata.object_name)
 
@@ -515,9 +425,8 @@ class ControlPanel(QWidget):
         """Set loaded Target FITS image (Frame B)."""
         self.fits_image_b = fits_img
         self.reference_stars_b = stars_b or []
-        self.lbl_frame_b_info.setText(f"{fits_img.metadata.filename} ({fits_img.width}x{fits_img.height})")
-        self.lbl_align_status.setText("Target loaded (Click Align)")
-        self.lbl_align_status.setStyleSheet("color: #FFB703;")
+        self.lbl_align_status.setText("Frame B loaded (Click Align)")
+        self.lbl_align_status.setStyleSheet("color: #804000; font-weight: bold;")
 
     def add_reference_star(self, star: ReferenceStar):
         """Add a reference star."""
@@ -534,8 +443,8 @@ class ControlPanel(QWidget):
     def set_target_centroid(self, centroid: CentroidResult):
         """Record target object centroid."""
         self.target_centroid = centroid
-        self.lbl_target_xy.setText(f"X: {centroid.x:.3f} px  |  Y: {centroid.y:.3f} px")
-        self.lbl_target_fwhm.setText(f"{centroid.fwhm:.2f} px  (SNR: {centroid.snr:.1f})")
+        self.lbl_target_xy.setText(f"{centroid.x:.2f}, {centroid.y:.2f}")
+        self.lbl_target_fwhm.setText(f"SNR: {centroid.snr:.1f}")
 
         if self.solver.solution is not None:
             self._update_target_astrometry()
@@ -550,8 +459,8 @@ class ControlPanel(QWidget):
         self.target_ra_deg = ra_deg
         self.target_dec_deg = dec_deg
 
-        self.lbl_target_ra.setText(f"{format_ra(ra_deg)}  ({ra_deg:.6f}°)")
-        self.lbl_target_dec.setText(f"{format_dec(dec_deg)}  ({dec_deg:.6f}°)")
+        self.lbl_target_ra.setText(f"{format_ra(ra_deg)}")
+        self.lbl_target_dec.setText(f"{format_dec(dec_deg)}")
 
     def _on_target_desig_changed(self, text: str):
         self.target_desig = text.strip() or "TARGET"
@@ -560,20 +469,11 @@ class ControlPanel(QWidget):
 
     def _on_blink_toggled(self, checked: bool):
         if checked:
-            self.btn_toggle_blink.setText("⏸ Pause Blinking")
+            self.btn_toggle_blink.setText("⏸ Pause")
             self.viewModeRequested.emit(ViewMode.BLINK)
         else:
-            self.btn_toggle_blink.setText("▶ Start Blinking (A ⟷ B)")
+            self.btn_toggle_blink.setText("▶ Blink")
             self.viewModeRequested.emit(ViewMode.FRAME_A)
-
-    def _on_blink_speed_slider(self, val: int):
-        fps = 1000.0 / val
-        self.lbl_speed_val.setText(f"{val} ms ({fps:.1f} fps)")
-        self.blinkSpeedChanged.emit(val)
-
-    def _on_diff_thresh_slider(self, val: int):
-        sigma = val / 10.0
-        self.lbl_thresh_val.setText(f"{sigma:.1f} σ")
 
     def _run_alignment(self):
         """Execute image registration in background thread."""
@@ -589,13 +489,13 @@ class ControlPanel(QWidget):
                 self,
                 "Reference Stars Required",
                 "At least 3 reference stars or FITS WCS headers are required to register and align the images.\n"
-                "Please pick reference stars on Frame A or click 'Fetch Gaia DR3 Field'.",
+                "Please pick reference stars on Frame A or click 'Gaia DR3 Field'.",
             )
             return
 
         self.btn_align.setEnabled(False)
         self.align_progress.show()
-        self.lbl_align_status.setText("Computing 6-constant affine warp...")
+        self.lbl_align_status.setText("Aligning...")
 
         self.align_worker = AlignmentWorker(
             fits_a=self.fits_image_a,
@@ -616,32 +516,29 @@ class ControlPanel(QWidget):
         self.warped_b_array = warped_b
 
         self.lbl_align_status.setText(
-            f"Aligned (ΔX: {transform.translation_x:+.2f} px, ΔY: {transform.translation_y:+.2f} px, RMS: {transform.alignment_rms_px:.2f} px, rot: {transform.rotation_deg:.2f}°)"
+            f"ALIGNED (ΔX:{transform.translation_x:+.1f} ΔY:{transform.translation_y:+.1f} RMS:{transform.alignment_rms_px:.2f}px)"
         )
-        self.lbl_align_status.setStyleSheet("color: #00E676; font-weight: bold;")
+        self.lbl_align_status.setStyleSheet("color: #006000; font-weight: bold;")
 
         # Send warped array to viewer
         self.warpedImageReady.emit(warped_b)
-
-        # Switch to Frame B (Aligned) view mode
         self.viewModeRequested.emit(ViewMode.FRAME_B)
 
         QMessageBox.information(
             self,
             "Registration Complete",
-            f"Image B aligned to Image A successfully via full 6-constant affine warping!\n\n"
+            f"Image B aligned to Image A successfully!\n\n"
             f"• Translation Shift: ΔX = {transform.translation_x:+.2f} px, ΔY = {transform.translation_y:+.2f} px\n"
             f"• Relative Rotation: {transform.rotation_deg:.2f}°\n"
-            f"• Scale Factors: X = {transform.scale_x:.4f}, Y = {transform.scale_y:.4f}\n"
             f"• Alignment RMS: {transform.alignment_rms_px:.3f} px (Sub-pixel)\n\n"
-            f"View Mode switched to 'Frame B (Aligned)'. You can now toggle Blink Mode or Generate Difference Map.",
+            f"View Mode switched to 'Frame B (Aligned)'. You can now toggle Blink Mode or Detect Moving Bodies.",
         )
 
     def _on_alignment_error(self, err_msg: str):
         self.align_progress.hide()
         self.btn_align.setEnabled(True)
         self.lbl_align_status.setText(f"Failed: {err_msg}")
-        self.lbl_align_status.setStyleSheet("color: #FF4B4B;")
+        self.lbl_align_status.setStyleSheet("color: #800000; font-weight: bold;")
         QMessageBox.critical(self, "Registration Error", f"Failed to register images:\n{err_msg}")
 
     def _run_diffing(self):
@@ -655,12 +552,10 @@ class ControlPanel(QWidget):
             QMessageBox.warning(self, "No Target Image", "Please load and align Target Image B.")
             return
 
-        threshold_sigma = self.slider_diff_thresh.value() / 10.0
-
         self.btn_generate_diff.setEnabled(False)
         self.diff_progress.show()
 
-        self.diff_worker = DiffWorker(self.fits_image_a.data, target_array, threshold_sigma=threshold_sigma)
+        self.diff_worker = DiffWorker(self.fits_image_a.data, target_array, threshold_sigma=3.5)
         self.diff_worker.finished.connect(self._on_diff_finished)
         self.diff_worker.error.connect(self._on_diff_error)
         self.diff_worker.start()
@@ -670,64 +565,49 @@ class ControlPanel(QWidget):
         self.btn_generate_diff.setEnabled(True)
         self.diff_result = result
 
-        # Emit difference image to viewer
         self.diffImageReady.emit(result.diff_abs)
         self.candidatesFound.emit(result.candidates)
 
-        # Populate Candidates Table
         self.candidate_table.setRowCount(len(result.candidates))
-        mono_font = QFont("SF Mono", 10)
+        mono_font = QFont("Courier New", 10)
 
         for row, cand in enumerate(result.candidates):
             item_id = QTableWidgetItem(cand.candidate_id)
             item_id.setFont(mono_font)
             if cand.is_priority:
-                item_id.setForeground(QColor("#00E676"))
+                item_id.setForeground(QColor("#000080"))
             item_id.setFlags(item_id.flags() ^ Qt.ItemFlag.ItemIsEditable)
 
-            item_xy = QTableWidgetItem(f"{cand.x:.1f}, {cand.y:.1f}")
+            item_xy = QTableWidgetItem(f"{cand.x:.1f},{cand.y:.1f}")
             item_xy.setFont(mono_font)
             item_xy.setFlags(item_xy.flags() ^ Qt.ItemFlag.ItemIsEditable)
 
-            item_snr = QTableWidgetItem(f"{cand.snr:.1f} σ")
+            item_snr = QTableWidgetItem(f"{cand.snr:.1f}s")
             item_snr.setFont(mono_font)
-            item_snr.setForeground(QColor("#00E676" if cand.snr >= 8.0 else "#FFB703"))
+            item_snr.setForeground(QColor("#006000" if cand.snr >= 8.0 else "#804000"))
             item_snr.setFlags(item_snr.flags() ^ Qt.ItemFlag.ItemIsEditable)
 
             item_scale = QTableWidgetItem(cand.scale)
             item_scale.setFont(mono_font)
-            if "High" in cand.scale:
-                item_scale.setForeground(QColor("#00E5FF"))
-            elif "Mid" in cand.scale:
-                item_scale.setForeground(QColor("#FFB703"))
-            else:
-                item_scale.setForeground(QColor("#9E9E9E"))
             item_scale.setFlags(item_scale.flags() ^ Qt.ItemFlag.ItemIsEditable)
 
             item_conf = QTableWidgetItem(f"{cand.confidence_score * 100:.0f}%")
             item_conf.setFont(mono_font)
-            item_conf.setForeground(QColor("#00E676" if cand.confidence_score >= 0.90 else "#FFB703"))
             item_conf.setFlags(item_conf.flags() ^ Qt.ItemFlag.ItemIsEditable)
-
-            item_pol = QTableWidgetItem(cand.polarity)
-            item_pol.setFont(mono_font)
-            item_pol.setFlags(item_pol.flags() ^ Qt.ItemFlag.ItemIsEditable)
 
             self.candidate_table.setItem(row, 0, item_id)
             self.candidate_table.setItem(row, 1, item_xy)
             self.candidate_table.setItem(row, 2, item_snr)
             self.candidate_table.setItem(row, 3, item_scale)
             self.candidate_table.setItem(row, 4, item_conf)
-            self.candidate_table.setItem(row, 5, item_pol)
 
         QMessageBox.information(
             self,
             "Diffing Complete",
             f"Difference map computed!\n\n"
             f"• Background Noise: {result.noise_sigma:.2f} ADU\n"
-            f"• Gain Scale B: {result.gain_scale_b:.3f}\n"
             f"• Moving Candidates Detected: {len(result.candidates)}\n\n"
-            f"Double-click any candidate in the list to inspect and solve astrometry.",
+            f"Double-click any candidate in the list to inspect.",
         )
 
     def _on_diff_error(self, err_msg: str):
@@ -740,7 +620,6 @@ class ControlPanel(QWidget):
         if self.diff_result and 0 <= row < len(self.diff_result.candidates):
             cand = self.diff_result.candidates[row]
             self.candidateSelected.emit(cand.x, cand.y)
-            # Auto-create target centroid
             target_centroid = CentroidResult(
                 x=cand.x,
                 y=cand.y,
@@ -750,8 +629,6 @@ class ControlPanel(QWidget):
                 success=True,
             )
             self.set_target_centroid(target_centroid)
-            # Switch to Target Object Tab
-            self.tabs.setCurrentWidget(self.tab_target)
 
     def solve_plate(self):
         """Perform rigorous Least-Squares Plate-Constants (LSPC) solution."""
@@ -771,21 +648,14 @@ class ControlPanel(QWidget):
 
             self.lbl_sol_scale.setText(f"{sol.pixel_scale_avg_arcsec:.3f} \"/px")
             self.lbl_sol_rotation.setText(f"{sol.rotation_deg:.2f}°")
-            self.lbl_sol_center.setText(f"RA: {format_ra(sol.ra_0_deg)} | Dec: {format_dec(sol.dec_0_deg)}")
-
-            self.lbl_sol_stars.setText(f"{sol.num_stars_used} / {sol.num_stars_total} stars")
-            self.lbl_sol_rms_tot.setText(f"{sol.rms_total_arcsec:.3f} \" (Sub-arcsecond)")
-            self.lbl_sol_rms_ra.setText(f"{sol.rms_ra_arcsec:.3f} \"")
-            self.lbl_sol_rms_dec.setText(f"{sol.rms_dec_arcsec:.3f} \"")
-            self.lbl_sol_max_res.setText(f"{sol.max_residual_arcsec:.3f} \"")
+            self.lbl_sol_rms_tot.setText(f"{sol.rms_total_arcsec:.3f}\" (RMS)")
+            self.lbl_sol_stars.setText(f"{sol.num_stars_used}/{sol.num_stars_total} stars (Max: {sol.max_residual_arcsec:.2f}\")")
 
             self._refresh_star_table()
             self.starsChanged.emit()
 
             if self.target_centroid:
                 self._update_target_astrometry()
-
-            self.tabs.setCurrentWidget(self.tab_solution)
 
             QMessageBox.information(
                 self,
@@ -803,54 +673,48 @@ class ControlPanel(QWidget):
     def _refresh_star_table(self):
         self.star_table.blockSignals(True)
         self.star_table.setRowCount(len(self.reference_stars))
+        mono_font = QFont("Courier New", 10)
 
         for row, star in enumerate(self.reference_stars):
-            chk = QTableWidgetItem()
-            chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-            chk.setCheckState(Qt.CheckState.Checked if star.enabled else Qt.CheckState.Unchecked)
-            self.star_table.setItem(row, 0, chk)
-
             item_id = QTableWidgetItem(star.star_id)
+            item_id.setFont(mono_font)
             item_id.setFlags(item_id.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            self.star_table.setItem(row, 1, item_id)
+            self.star_table.setItem(row, 0, item_id)
 
             item_x = QTableWidgetItem(f"{star.x:.2f}")
+            item_x.setFont(mono_font)
             item_x.setFlags(item_x.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            self.star_table.setItem(row, 2, item_x)
+            self.star_table.setItem(row, 1, item_x)
 
             item_y = QTableWidgetItem(f"{star.y:.2f}")
+            item_y.setFont(mono_font)
             item_y.setFlags(item_y.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            self.star_table.setItem(row, 3, item_y)
+            self.star_table.setItem(row, 2, item_y)
 
             item_ra = QTableWidgetItem(format_ra(star.ra_deg))
+            item_ra.setFont(mono_font)
             item_ra.setFlags(item_ra.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            self.star_table.setItem(row, 4, item_ra)
+            self.star_table.setItem(row, 3, item_ra)
 
             item_dec = QTableWidgetItem(format_dec(star.dec_deg))
+            item_dec.setFont(mono_font)
             item_dec.setFlags(item_dec.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            self.star_table.setItem(row, 5, item_dec)
+            self.star_table.setItem(row, 4, item_dec)
 
             res_str = f"{star.res_total_arcsec:.2f}\"" if star.solved_ra_deg is not None else "-"
             item_res = QTableWidgetItem(res_str)
+            item_res.setFont(mono_font)
             item_res.setFlags(item_res.flags() ^ Qt.ItemFlag.ItemIsEditable)
             if star.solved_ra_deg is not None:
                 if star.res_total_arcsec < 0.5:
-                    item_res.setForeground(QColor("#00E676"))
+                    item_res.setForeground(QColor("#006000"))
                 elif star.res_total_arcsec < 1.0:
-                    item_res.setForeground(QColor("#00F2FE"))
+                    item_res.setForeground(QColor("#000080"))
                 else:
-                    item_res.setForeground(QColor("#FFB703"))
-            self.star_table.setItem(row, 6, item_res)
+                    item_res.setForeground(QColor("#804000"))
+            self.star_table.setItem(row, 5, item_res)
 
         self.star_table.blockSignals(False)
-        self.star_table.itemChanged.connect(self._on_table_item_changed)
-
-    def _on_table_item_changed(self, item: QTableWidgetItem):
-        if item.column() == 0:
-            row = item.row()
-            if 0 <= row < len(self.reference_stars):
-                self.reference_stars[row].enabled = (item.checkState() == Qt.CheckState.Checked)
-                self.starsChanged.emit()
 
     def _on_star_row_double_clicked(self, item: QTableWidgetItem):
         row = item.row()
@@ -970,7 +834,7 @@ class ControlPanel(QWidget):
             con=self.txt_observer.text().strip(),
             obs=self.txt_observer.text().strip(),
             mea=self.txt_observer.text().strip(),
-            tel=self.txt_telescope.text().strip(),
+            tel="0.4m f/8 Reflector + CCD",
             net="Gaia-DR3",
             ack="Astrimetrique v0.1.0",
         )

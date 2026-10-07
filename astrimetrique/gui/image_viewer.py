@@ -1,7 +1,7 @@
 """
 High-Performance Astronomical Image Viewer with Multi-Frame Blinking & Diffing.
-Features hardware-accelerated PyQtGraph rendering, locked uniform ZScale dynamic range,
-and rapid sub-pixel blinking between aligned astronomical exposures.
+Features Classic Astrometrica / Windows Classic visual styling, thin full-screen black crosshairs,
+locked uniform ZScale dynamic range, and bottom-right monospace coordinate overlay.
 """
 
 from enum import Enum
@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QGraphicsRectItem,
     QWidget,
     QVBoxLayout,
+    QLabel,
 )
 
 from astrimetrique.core.centroid import CentroidResult, fit_centroid_2d_gaussian
@@ -40,8 +41,9 @@ class ViewMode(str, Enum):
 
 class AstronomicalImageViewer(QWidget):
     """
-    Scientific astronomical viewport supporting multi-frame sequence browsing,
-    synchronized uniform ZScale dynamic range stretching, and rapid blinking.
+    Scientific astronomical viewport reproducing Astrometrica visual identity.
+    Includes thin black full-screen crosshairs, bottom-right coordinates overlay,
+    and locked uniform ZScale dynamic range stretching.
     """
 
     cursorMoved = pyqtSignal(float, float, float)  # (x, y, adu)
@@ -92,51 +94,80 @@ class AstronomicalImageViewer(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Configure pyqtgraph graphics view
-        pg.setConfigOption("background", "#0B0E14")
-        pg.setConfigOption("foreground", "#94A3B8")
-        pg.setConfigOption("antialias", True)
+        # Configure pyqtgraph graphics view for classic scientific look
+        pg.setConfigOption("background", "#000000")
+        pg.setConfigOption("foreground", "#808080")
+        pg.setConfigOption("antialias", False)
 
         self.plot_widget = pg.PlotWidget()
-        self.plot_widget.showGrid(x=True, y=True, alpha=0.15)
+        self.plot_widget.showGrid(x=False, y=False)
         self.plot_widget.setAspectLocked(True)
         self.plot_item = self.plot_widget.getPlotItem()
         self.plot_item.invertY(False)  # Astronomical orientation (bottom-left = 0,0)
+        self.plot_item.hideAxis("left")
+        self.plot_item.hideAxis("bottom")
 
         # Image Item
         self.img_item = pg.ImageItem()
         self.plot_item.addItem(self.img_item)
 
-        # Crosshair lines
-        self.crosshair_v = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#00F2FE", width=1, style=Qt.PenStyle.DashLine))
-        self.crosshair_h = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen("#00F2FE", width=1, style=Qt.PenStyle.DashLine))
+        # Thin, black full-screen crosshair that follows mouse
+        # Pen: 1px solid black (or dark gray for inverted contrast)
+        self.crosshair_v = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#000000", width=1))
+        self.crosshair_h = pg.InfiniteLine(angle=0, movable=False, pen=pg.mkPen("#000000", width=1))
         self.plot_item.addItem(self.crosshair_v, ignoreBounds=True)
         self.plot_item.addItem(self.crosshair_h, ignoreBounds=True)
 
         # Centroid fit indicator ring
         self.preview_reticle = pg.QtWidgets.QGraphicsEllipseItem()
-        self.preview_reticle.setPen(QPen(QColor("#00F2FE"), 1.5, Qt.PenStyle.SolidLine))
+        self.preview_reticle.setPen(QPen(QColor("#000080"), 1.0, Qt.PenStyle.SolidLine))
         self.preview_reticle.hide()
         self.plot_item.addItem(self.preview_reticle)
 
         layout.addWidget(self.plot_widget)
 
+        # Coordinates Overlay in bottom-right corner: X: 0000.00 Y: 0000.00 in white monospace font
+        self.coord_overlay = QLabel("X: 0000.00  Y: 0000.00", self)
+        self.coord_overlay.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 180);"
+            "color: #FFFFFF;"
+            "font-family: 'Courier New', Consolas, 'SF Mono', monospace;"
+            "font-size: 11px;"
+            "font-weight: bold;"
+            "padding: 2px 6px;"
+            "border: 1px solid #808080;"
+            "border-radius: 0px;"
+        )
+        self.coord_overlay.adjustSize()
+        self.coord_overlay.show()
+
         # Connect mouse events
         self.plot_widget.scene().sigMouseMoved.connect(self._on_mouse_moved)
         self.img_item.mouseClickEvent = self._on_image_clicked
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_overlay_positions()
+
+    def _update_overlay_positions(self):
+        # Position bottom-right coordinate overlay
+        margin = 12
+        w = self.coord_overlay.width()
+        h = self.coord_overlay.height()
+        self.coord_overlay.move(self.width() - w - margin, self.height() - h - margin)
+
     def _init_overlays(self):
-        # Frame Badge overlay (shows "FRAME A (EPOCH 1 REF)", "FRAME B (EPOCH 2 ALIGNED)", "DIFF MAP")
+        # Frame Badge overlay (shows "FRAME A (REF)", "FRAME B (ALIGNED)", "DIFF MAP")
         self.badge_group = pg.ItemGroup()
-        self.badge_bg = QGraphicsRectItem(12, 12, 190, 26)
-        self.badge_bg.setBrush(QBrush(QColor(14, 18, 26, 210)))
-        self.badge_bg.setPen(QPen(QColor("#00F2FE"), 1.0))
+        self.badge_bg = QGraphicsRectItem(8, 8, 175, 20)
+        self.badge_bg.setBrush(QBrush(QColor("#D4D0C8")))
+        self.badge_bg.setPen(QPen(QColor("#808080"), 1.0))
         self.badge_group.addItem(self.badge_bg)
 
         self.badge_text = QGraphicsSimpleTextItem("FRAME A (REF)")
-        self.badge_text.setPos(20, 16)
-        self.badge_text.setBrush(QBrush(QColor("#00F2FE")))
-        self.badge_text.setFont(QFont("SF Mono", 10, QFont.Weight.Bold))
+        self.badge_text.setPos(12, 10)
+        self.badge_text.setBrush(QBrush(QColor("#000080")))
+        self.badge_text.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
         self.badge_group.addItem(self.badge_text)
 
         self.plot_item.addItem(self.badge_group, ignoreBounds=True)
@@ -247,32 +278,32 @@ class AstronomicalImageViewer(QWidget):
         """Render active frame to viewport with locked dynamic range."""
         current_data = None
         badge_label = ""
-        badge_color = "#00F2FE"
+        badge_color = "#000080"
 
         if self.view_mode == ViewMode.DIFF and self.image_diff is not None:
             current_data = self.image_diff
             badge_label = "DIFFERENCE MAP"
-            badge_color = "#FF4B4B"
+            badge_color = "#800000"
             vmin, vmax = self.diff_z_min, self.diff_z_max
             self.activeFrameChanged.emit("DIFF")
 
         elif self.view_mode == ViewMode.FRAME_B or (self.view_mode == ViewMode.BLINK and self.current_blink_frame == "B"):
             if self.frame_b_aligned is not None:
                 current_data = self.frame_b_aligned
-                badge_label = "FRAME B (EPOCH 2 ALIGNED)"
-                badge_color = "#00E676"  # Emerald green for verified alignment
+                badge_label = "FRAME B (ALIGNED)"
+                badge_color = "#006000"
             elif self.fits_image_b is not None:
                 current_data = self.fits_image_b.data
-                badge_label = "FRAME B (EPOCH 2 UNALIGNED)"
-                badge_color = "#FFB703"
+                badge_label = "FRAME B (UNALIGNED)"
+                badge_color = "#804000"
             vmin, vmax = self.z_min, self.z_max
             self.activeFrameChanged.emit("B")
 
         else:  # FRAME_A or BLINK frame A
             if self.fits_image_a is not None:
                 current_data = self.fits_image_a.data
-                badge_label = "FRAME A (EPOCH 1 REF)"
-            badge_color = "#00F2FE"
+                badge_label = "FRAME A (REF)"
+            badge_color = "#000080"
             vmin, vmax = self.z_min, self.z_max
             self.activeFrameChanged.emit("A")
 
@@ -282,7 +313,7 @@ class AstronomicalImageViewer(QWidget):
         # Update Badge Overlay
         self.badge_text.setText(badge_label)
         self.badge_text.setBrush(QBrush(QColor(badge_color)))
-        self.badge_bg.setPen(QPen(QColor(badge_color), 1.2))
+        self.badge_bg.setPen(QPen(QColor("#808080"), 1.0))
 
         # Apply locked uniform stretch
         display_data = apply_stretch(
@@ -309,6 +340,11 @@ class AstronomicalImageViewer(QWidget):
 
         self.crosshair_v.setPos(x)
         self.crosshair_h.setPos(y)
+
+        # Update bottom-right coordinate overlay
+        self.coord_overlay.setText(f"X: {x:07.2f}  Y: {y:07.2f}")
+        self.coord_overlay.adjustSize()
+        self._update_overlay_positions()
 
         # Read intensity from currently rendered frame
         adu = 0.0
@@ -358,17 +394,17 @@ class AstronomicalImageViewer(QWidget):
         event.accept()
 
     def update_star_markers(self, stars: List[ReferenceStar]):
-        """Render reference star reticles."""
+        """Render reference star reticles in industrial classic style."""
         for item in self.star_markers:
             self.plot_item.removeItem(item)
         self.star_markers.clear()
 
-        font = QFont("SF Mono", 9, QFont.Weight.Bold)
+        font = QFont("Courier New", 9, QFont.Weight.Bold)
 
         for star in stars:
-            r = 7.0
-            color = QColor("#00E676") if star.enabled else QColor("#FF4B4B")
-            pen = QPen(color, 1.5, Qt.PenStyle.SolidLine if star.enabled else Qt.PenStyle.DashLine)
+            r = 6.0
+            color = QColor("#006000") if star.enabled else QColor("#800000")
+            pen = QPen(color, 1.0, Qt.PenStyle.SolidLine if star.enabled else Qt.PenStyle.DashLine)
 
             ellipse = QGraphicsEllipseItem(star.x - r, star.y - r, 2 * r, 2 * r)
             ellipse.setPen(pen)
@@ -380,7 +416,7 @@ class AstronomicalImageViewer(QWidget):
                 label_text += f" ({star.res_total_arcsec:.2f}\")"
 
             text_item = QGraphicsSimpleTextItem(label_text)
-            text_item.setPos(star.x + r + 3, star.y - r)
+            text_item.setPos(star.x + r + 2, star.y - r)
             text_item.setBrush(QBrush(color))
             text_item.setFont(font)
             self.plot_item.addItem(text_item)
@@ -392,20 +428,20 @@ class AstronomicalImageViewer(QWidget):
             self.plot_item.removeItem(item)
         self.candidate_markers.clear()
 
-        font = QFont("SF Mono", 9, QFont.Weight.Bold)
+        font = QFont("Courier New", 9, QFont.Weight.Bold)
 
         for cand in candidates:
-            r = 10.0
-            color = QColor("#FF007F") if "Epoch 1" in cand.polarity else QColor("#00F2FE")
-            pen = QPen(color, 2.0, Qt.PenStyle.DotLine)
+            r = 8.0
+            color = QColor("#800080") if "Epoch 1" in cand.polarity else QColor("#000080")
+            pen = QPen(color, 1.5, Qt.PenStyle.DotLine)
 
             ellipse = QGraphicsEllipseItem(cand.x - r, cand.y - r, 2 * r, 2 * r)
             ellipse.setPen(pen)
             self.plot_item.addItem(ellipse)
             self.candidate_markers.append(ellipse)
 
-            text_item = QGraphicsSimpleTextItem(f"★ {cand.candidate_id} ({cand.snr:.1f}σ)")
-            text_item.setPos(cand.x + r + 4, cand.y - r)
+            text_item = QGraphicsSimpleTextItem(f"[{cand.candidate_id}] ({cand.snr:.1f}s)")
+            text_item.setPos(cand.x + r + 3, cand.y - r)
             text_item.setBrush(QBrush(color))
             text_item.setFont(font)
             self.plot_item.addItem(text_item)
@@ -418,10 +454,10 @@ class AstronomicalImageViewer(QWidget):
             self.target_marker = None
 
         group = pg.ItemGroup()
-        color = QColor("#FFB703")
-        pen = QPen(color, 1.8, Qt.PenStyle.SolidLine)
+        color = QColor("#800000")
+        pen = QPen(color, 1.2, Qt.PenStyle.SolidLine)
 
-        r1, r2 = 9.0, 5.0
+        r1, r2 = 8.0, 4.0
         c1 = QGraphicsEllipseItem(x - r1, y - r1, 2 * r1, 2 * r1)
         c1.setPen(pen)
         c2 = QGraphicsEllipseItem(x - r2, y - r2, 2 * r2, 2 * r2)
@@ -429,10 +465,10 @@ class AstronomicalImageViewer(QWidget):
         group.addItem(c1)
         group.addItem(c2)
 
-        text = QGraphicsSimpleTextItem(f"🎯 {label}")
-        text.setPos(x + r1 + 4, y - r1)
+        text = QGraphicsSimpleTextItem(f"[{label}]")
+        text.setPos(x + r1 + 3, y - r1)
         text.setBrush(QBrush(color))
-        text.setFont(QFont("SF Mono", 10, QFont.Weight.Bold))
+        text.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
         group.addItem(text)
 
         self.plot_item.addItem(group)

@@ -1,5 +1,6 @@
 """
-Main Application Window for Astrimetrique with Image Registration, Blinking & Diffing.
+Main Application Window for Astrimetrique with Classic Astrometrica Visual Identity.
+Features Windows Classic UI layout, compact square toolbar buttons, and industrial data panels.
 """
 
 from pathlib import Path
@@ -35,26 +36,26 @@ from astrimetrique.gui.image_viewer import (
     ViewMode,
 )
 from astrimetrique.gui.star_dialog import StarReferenceDialog
-from astrimetrique.gui.styles import OBSIDIAN_THEME
+from astrimetrique.gui.styles import CLASSIC_ASTROMETRICA_THEME
 from astrimetrique.utils.coordinates import format_dec, format_ra
 
 
 class MainWindow(QMainWindow):
-    """Astrimetrique Main Window."""
+    """Astrimetrique Main Window - Classic Astrometrica Industrial Identity."""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Astrimetrique — Astrometric Reduction & Minor Body Discovery Engine")
-        self.resize(1380, 900)
+        self.setWindowTitle("Astrimetrique — Astrometric Reduction & Minor Planet Discovery (Classic Astrometrica)")
+        self.resize(1360, 880)
 
-        # Apply Obsidian Space theme
-        self.setStyleSheet(OBSIDIAN_THEME)
+        # Apply Classic Astrometrica / Windows Classic theme
+        self.setStyleSheet(CLASSIC_ASTROMETRICA_THEME)
 
         self._init_ui()
         self._init_menus_and_toolbar()
         self._init_statusbar()
 
-        # Load initial multi-epoch synthetic asteroid field for instant discovery demonstration!
+        # Load initial multi-epoch synthetic asteroid field for instant discovery demonstration
         self.load_synthetic_multiepoch_pair()
 
     def _init_ui(self):
@@ -67,8 +68,8 @@ class MainWindow(QMainWindow):
         self.viewer.targetPicked.connect(self._on_target_picked)
         self.viewer.activeFrameChanged.connect(self._on_active_frame_changed)
 
-        # 2. Right Control Panel Dock
-        self.dock = QDockWidget("Astrometric Control & Discovery", self)
+        # 2. Right-Hand Data Panels ("Control Center")
+        self.dock = QDockWidget("Astrometrica Control Center", self)
         self.dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea)
         self.dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
 
@@ -92,78 +93,101 @@ class MainWindow(QMainWindow):
         # File Menu
         file_menu = menu_bar.addMenu("&File")
 
-        act_open_ref = QAction("📂 Open Reference Image (Frame A)...", self)
+        act_open_ref = QAction("&Load Reference Image (Frame A)...", self)
         act_open_ref.setShortcut("Ctrl+O")
         act_open_ref.triggered.connect(self.open_reference_fits_dialog)
         file_menu.addAction(act_open_ref)
 
-        act_open_target = QAction("📂 Open Target Image (Frame B)...", self)
+        act_open_target = QAction("Load &Target Image (Frame B)...", self)
         act_open_target.setShortcut("Ctrl+Shift+O")
         act_open_target.triggered.connect(self.open_target_fits_dialog)
         file_menu.addAction(act_open_target)
 
         file_menu.addSeparator()
 
-        act_synth_pair = QAction("✨ Generate Multi-Epoch Discovery Pair (Moving Asteroid)", self)
-        act_synth_pair.setShortcut("Ctrl+M")
-        act_synth_pair.triggered.connect(self.load_synthetic_multiepoch_pair)
-        file_menu.addAction(act_synth_pair)
+        act_align = QAction("&Align Frame B to Frame A", self)
+        act_align.setShortcut("Ctrl+A")
+        act_align.triggered.connect(self.control_panel._run_alignment)
+        file_menu.addAction(act_align)
 
-        act_synth_single = QAction("✨ Generate Single Test Field", self)
-        act_synth_single.triggered.connect(self.load_synthetic_single_field)
-        file_menu.addAction(act_synth_single)
+        act_solve = QAction("&Solve Astrometric Plate (LSPC)", self)
+        act_solve.setShortcut("F5")
+        act_solve.triggered.connect(self.control_panel.solve_plate)
+        file_menu.addAction(act_solve)
 
-        file_menu.addSeparator()
-
-        act_headers = QAction("🔍 Inspect FITS Headers...", self)
-        act_headers.setShortcut("Ctrl+H")
-        act_headers.triggered.connect(self.inspect_fits_headers)
-        file_menu.addAction(act_headers)
-
-        act_export_mpc = QAction("📄 Export MPC 80-Column Report...", self)
+        act_export_mpc = QAction("&Export MPC 80-Column Report...", self)
         act_export_mpc.setShortcut("Ctrl+E")
         act_export_mpc.triggered.connect(self.control_panel._open_mpc_export_dialog)
         file_menu.addAction(act_export_mpc)
 
         file_menu.addSeparator()
 
-        act_exit = QAction("Exit", self)
+        act_synth_pair = QAction("Generate Multi-Epoch Asteroid Pair", self)
+        act_synth_pair.setShortcut("Ctrl+M")
+        act_synth_pair.triggered.connect(self.load_synthetic_multiepoch_pair)
+        file_menu.addAction(act_synth_pair)
+
+        act_synth_single = QAction("Generate Single Test Field", self)
+        act_synth_single.triggered.connect(self.load_synthetic_single_field)
+        file_menu.addAction(act_synth_single)
+
+        file_menu.addSeparator()
+
+        act_headers = QAction("Inspect FITS Headers...", self)
+        act_headers.setShortcut("Ctrl+H")
+        act_headers.triggered.connect(self.inspect_fits_headers)
+        file_menu.addAction(act_headers)
+
+        file_menu.addSeparator()
+
+        act_exit = QAction("E&xit", self)
         act_exit.setShortcut(QKeySequence.StandardKey.Quit)
         act_exit.triggered.connect(self.close)
         file_menu.addAction(act_exit)
 
         # Discovery Menu
         discovery_menu = menu_bar.addMenu("&Discovery")
-
-        act_align = QAction("🔄 Align Frame B to Frame A", self)
-        act_align.setShortcut("Ctrl+A")
-        act_align.triggered.connect(self.control_panel._run_alignment)
         discovery_menu.addAction(act_align)
 
-        act_diff = QAction("🔍 Compute Difference Map", self)
+        act_diff = QAction("Compute Difference Map", self)
         act_diff.setShortcut("Ctrl+D")
         act_diff.triggered.connect(self.control_panel._run_diffing)
         discovery_menu.addAction(act_diff)
 
-        # Toolbar
+        # =====================================================================
+        # Astrometrica Top Toolbar:
+        # Order: [Load Reference] [Load Target] [Align] [Solve Plate] [Export MPC]
+        # =====================================================================
         self.toolbar = QToolBar("Main Operations", self)
-        self.toolbar.setIconSize(QSize(18, 18))
+        self.toolbar.setIconSize(QSize(16, 16))
         self.toolbar.setMovable(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
 
+        # Button 1: Load Reference
         self.toolbar.addAction(act_open_ref)
-        self.toolbar.addAction(act_open_target)
-        self.toolbar.addAction(act_synth_pair)
-        self.toolbar.addSeparator()
+        act_open_ref.setText("Load Reference")
 
-        # Registration & Diff Actions in Toolbar
+        # Button 2: Load Target
+        self.toolbar.addAction(act_open_target)
+        act_open_target.setText("Load Target")
+
+        # Button 3: Align
         self.toolbar.addAction(act_align)
-        self.toolbar.addAction(act_diff)
+        act_align.setText("Align")
+
+        # Button 4: Solve Plate
+        self.toolbar.addAction(act_solve)
+        act_solve.setText("Solve Plate")
+
+        # Button 5: Export MPC
+        self.toolbar.addAction(act_export_mpc)
+        act_export_mpc.setText("Export MPC")
+
         self.toolbar.addSeparator()
 
         # Stretch selector
         lbl_stretch = QLabel(" Stretch: ")
-        lbl_stretch.setStyleSheet("color: #94A3B8; font-weight: bold;")
+        lbl_stretch.setStyleSheet("color: #000000; font-weight: bold; font-size: 11px;")
         self.toolbar.addWidget(lbl_stretch)
 
         self.combo_stretch = QComboBox()
@@ -174,7 +198,7 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(self.combo_stretch)
 
         # Invert Colors Action
-        self.act_invert = QAction("🌓 Invert (Negative)", self)
+        self.act_invert = QAction("Invert", self)
         self.act_invert.setCheckable(True)
         self.act_invert.toggled.connect(self.viewer.set_invert_colors)
         self.toolbar.addAction(self.act_invert)
@@ -184,20 +208,20 @@ class MainWindow(QMainWindow):
         # Interaction Mode Group
         mode_group = QActionGroup(self)
 
-        self.act_mode_pick_star = QAction("⭐ Pick Star Mode", self)
+        self.act_mode_pick_star = QAction("Pick Star", self)
         self.act_mode_pick_star.setCheckable(True)
         self.act_mode_pick_star.setChecked(True)
         self.act_mode_pick_star.triggered.connect(lambda: self.viewer.set_interaction_mode(InteractionMode.PICK_STAR))
         mode_group.addAction(self.act_mode_pick_star)
         self.toolbar.addAction(self.act_mode_pick_star)
 
-        self.act_mode_pick_target = QAction("🎯 Pick Target Mode", self)
+        self.act_mode_pick_target = QAction("Pick Target", self)
         self.act_mode_pick_target.setCheckable(True)
         self.act_mode_pick_target.triggered.connect(lambda: self.viewer.set_interaction_mode(InteractionMode.PICK_TARGET))
         mode_group.addAction(self.act_mode_pick_target)
         self.toolbar.addAction(self.act_mode_pick_target)
 
-        self.act_mode_pan = QAction("✋ Pan / Zoom", self)
+        self.act_mode_pan = QAction("Pan/Zoom", self)
         self.act_mode_pan.setCheckable(True)
         self.act_mode_pan.triggered.connect(lambda: self.viewer.set_interaction_mode(InteractionMode.PAN_ZOOM))
         mode_group.addAction(self.act_mode_pan)
@@ -205,22 +229,21 @@ class MainWindow(QMainWindow):
 
         self.toolbar.addSeparator()
         self.toolbar.addAction(act_headers)
-        self.toolbar.addAction(act_export_mpc)
 
     def _init_statusbar(self):
         self.statusbar = QStatusBar(self)
         self.setStatusBar(self.statusbar)
 
-        self.lbl_status_pos = QLabel("X: --- px  Y: --- px")
-        self.lbl_status_pos.setStyleSheet("color: #00F2FE; font-weight: bold; margin-right: 12px;")
+        self.lbl_status_pos = QLabel("X: 0000.00 px  Y: 0000.00 px")
+        self.lbl_status_pos.setStyleSheet("color: #000080; font-weight: bold; margin-right: 12px;")
         self.statusbar.addPermanentWidget(self.lbl_status_pos)
 
-        self.lbl_status_adu = QLabel("ADU: ---")
-        self.lbl_status_adu.setStyleSheet("color: #E2E8F0; margin-right: 12px;")
+        self.lbl_status_adu = QLabel("ADU: 0.0")
+        self.lbl_status_adu.setStyleSheet("color: #000000; margin-right: 12px;")
         self.statusbar.addPermanentWidget(self.lbl_status_adu)
 
         self.lbl_status_sky = QLabel("Sky: ---")
-        self.lbl_status_sky.setStyleSheet("color: #00E676; margin-right: 12px;")
+        self.lbl_status_sky.setStyleSheet("color: #006000; font-weight: bold; margin-right: 12px;")
         self.statusbar.addPermanentWidget(self.lbl_status_sky)
 
         self.lbl_status_info = QLabel("Ready")
